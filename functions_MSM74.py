@@ -222,7 +222,7 @@ def plot_coords(lons, lats, title='Scatter Plot of MSM74', extent=[-70, -25, 50,
     # Show the plot
     plt.show()
 
-def contour_var(lon, depth, var, PD, title, cbar_label, ax=None, colormap = 'coolwarm', x_invt=0, y_invt=1):
+def contour_var(lon, depth, var, PD, title, cbar_label, ax=None, colormap = 'coolwarm', x_invt=0, y_invt=1, max_depth=800):
     mask = (~np.isnan(lon)) & (~np.isnan(depth)) & (~np.isnan(var)) & (~np.isnan(PD)) & \
            (~np.isinf(lon)) & (~np.isinf(depth)) & (~np.isinf(var)) & (~np.isinf(PD))
     lons_clean = lon[mask]
@@ -256,12 +256,15 @@ def contour_var(lon, depth, var, PD, title, cbar_label, ax=None, colormap = 'coo
     ax.set_xlabel("Distance [km]")
     ax.set_ylabel("Depth (m)")
     ax.set_title(title)
+    ax.set_ylim(0, max_depth)
 
     # Invert y-axis if depth increases downward
     if y_invt == 1:
         ax.invert_yaxis()
     if x_invt:
         ax.invert_xaxis()
+
+   
 
 def get_dists(distance, depth, section_num, cruise="MSM74"):
     if section_num == 5 and cruise == "MSM74":
@@ -306,7 +309,16 @@ def plot_section_data(distance, depth, distance_adcp, depth_adcp, temperature, s
     levels = np.linspace(-0.35, 0.35, 65)  
 
     # Define a saturation factor (>1 increases saturation, <1 decreases it)
-    V_plot = axs[1, 1].contourf(distance_grid, depth_grid, v_ortho, levels=levels, cmap="RdBu_r", norm=Normalize(vmin=-0.35, vmax=0.35), extend='both')
+    if section_num == 3:
+        V_plot = axs[1, 1].imshow(v_ortho,
+                                    extent=[distance_adcp[:].min(), distance_adcp[:].max(), depth_adcp[:].max(), depth_adcp[:].min()],
+                                    aspect='auto',
+                                    cmap="RdBu_r",
+                                    norm=plt.Normalize(-0.22, 0.22),
+                                    origin='upper'  # or 'lower', depending on your depth axis orientation
+                                    )
+    else:
+        V_plot = axs[1, 1].contourf(distance_grid, depth_grid, v_ortho, levels=levels, cmap="RdBu_r", norm=Normalize(vmin=-0.35, vmax=0.35), extend='both')
 
     # V_plot = axs[1, 1].contourf(distance_grid, depth_grid, v_ortho, levels=levels, cmap='RdBu_r', extend='both')
     cbar = plt.colorbar(V_plot, ax=axs[1, 1])
@@ -346,6 +358,8 @@ def plot_section_data(distance, depth, distance_adcp, depth_adcp, temperature, s
     axs[1, 1].set_xlabel('Distance (km)', fontsize=12)
     axs[1, 1].set_ylabel('Depth (m)', fontsize=12)
     axs[1, 1].invert_yaxis()
+
+    
 
     if inv_x:
         axs[1, 1].invert_xaxis()
@@ -962,8 +976,6 @@ def load_data(section_num, lonlatev, ds_ctd, ds_adcp):
 
     adcp_lats = ds_adcp['LATITUDE']
     adcp_lons = ds_adcp['LONGITUDE']
-
-
     depth_adcp = ds_adcp['DEPTH']
 
     adcp_sec = np.where((adcp_lons<np.nanmax(lon))
@@ -1041,7 +1053,7 @@ def anom(tref, sref, lon_woa, lat_woa, depth_woa, t_grid, s_grid, sigma_grid, di
     sigma_woa = determine_sigma(sref_profile, tref_profile, woa_press, lon_woa, lat_woa)
 
     if var_name in ['density', 'dens']:
-        print("Calculating Density Anomalies")
+        # print("Calculating Density Anomalies")
         return density_anomaly(depth_woa, sigma_woa, sigma_grid, distance)
 
     ind_rho = np.arange(22, 28, pas)
@@ -1056,10 +1068,10 @@ def anom(tref, sref, lon_woa, lat_woa, depth_woa, t_grid, s_grid, sigma_grid, di
     depth_int = make_depth_grid(distance)
 
     if var_name in ["temperature", "temp"]:
-        print("Calculating Temperature Anomalies")
+        # print("Calculating Temperature Anomalies")
         ref_profile, var_grid = tref_profile, t_grid
     elif var_name in ["salinity", "sal"]:
-        print("Calculating Salinity Anomalies")
+        # print("Calculating Salinity Anomalies")
         ref_profile, var_grid = sref_profile, s_grid
 
     ref_interp = np.full(len(ind_rho), np.nan)
@@ -1879,10 +1891,9 @@ def plot_eddy_selected(ax, xs, zs, anomalyt, temp_eddy, sigma_grid, distance, in
     # clines = plt.contour(xs, -1*zs, sigma_grid, levels=contour_levels, colors='k', linewidths=0.8)
     min1 = 0.7 * np.nanmin(anomalyt)
     n2 = Normalize(vmin=min1, vmax=-1 * min1)
-    if cruise == "MSM74" and section_num == 5:
-        indices = find_increasing_intervals(depth)
-        xs = np.array([distance[s] for s, st in indices])
-        print(len(xs))
+
+    if cruise == "MSM74":
+        xs = get_dists(distance, depth, section_num)
     else:
         xs = np.unique(distance)
     contour = ax.contourf(xs, -1*ind_Z, anomalyt, cmap='coolwarm',
